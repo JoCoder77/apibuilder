@@ -1,26 +1,25 @@
-"""Gemini API wrapper with retry, backoff, and JSON mode."""
+"""Groq API wrapper with retry, backoff, and JSON mode."""
 
 import json
 import os
 import time
 
-from google import genai
-from google.genai import types
+from groq import Groq
 
-MODEL = "gemini-2.0-flash"
+MODEL = "llama-3.3-70b-versatile"
 TEMPERATURE = 0.2
 MAX_RETRIES = 3
 
 
-def _client() -> genai.Client:
-    api_key = os.environ.get("GEMINI_API_KEY")
+def _client() -> Groq:
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise EnvironmentError("GEMINI_API_KEY environment variable is not set.")
-    return genai.Client(api_key=api_key)
+        raise EnvironmentError("GROQ_API_KEY environment variable is not set.")
+    return Groq(api_key=api_key)
 
 
 def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> str:
-    """Call Gemini with optional JSON mode. Returns the response text.
+    """Call Groq with optional JSON mode. Returns the response text.
 
     Args:
         system_prompt: High-level instructions for the model.
@@ -38,18 +37,19 @@ def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> s
         )
 
     client = _client()
-    full_prompt = f"{system_prompt}\n\n{user_prompt}"
-    config = types.GenerateContentConfig(temperature=TEMPERATURE)
 
     last_error: Exception | None = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.models.generate_content(
+            response = client.chat.completions.create(
                 model=MODEL,
-                contents=full_prompt,
-                config=config,
+                temperature=TEMPERATURE,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
             )
-            text = response.text.strip()
+            text = response.choices[0].message.content.strip()
 
             if json_mode:
                 # Strip accidental markdown fences the model may still emit
@@ -70,7 +70,7 @@ def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> s
                 print(f"[llm] JSON parse failed (attempt {attempt + 1}), retrying in {wait}s…")
                 time.sleep(wait)
 
-        except Exception as exc:  # noqa: BLE001 — catch API / network errors
+        except Exception as exc:  # noqa: BLE001
             last_error = exc
             if attempt < MAX_RETRIES - 1:
                 wait = 2 ** (attempt + 1)
