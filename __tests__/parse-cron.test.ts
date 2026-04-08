@@ -13,10 +13,12 @@ describe('parseCron', () => {
   });
 
   it('should handle invalid cron expressions', () => {
-    const expression = 'invalid';
+    const expression = '99 25 * * *';
     const result = parseCron(expression);
     expect(result.valid).toBe(false);
     expect(result.expression).toBe(expression);
-    expect(result.error).not.toBeUndefined();
+    expect(result.error).toBe('Hour value 25 is out of range (0-23)');
   });
+
+  // Add more test cases for different cron expressions and error scenarios
 });

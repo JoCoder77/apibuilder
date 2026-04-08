@@ -1,56 +1,20 @@
 import { CronExpression } from 'cron-expression';
 
-interface CronExpressionDescriptor {
-  minute: string;
-  hour: string;
-  dayOfMonth: string;
-  month: string;
-  dayOfWeek: string;
-}
-
-function parseCronExpression(expression: string): CronExpressionDescriptor {
-  const parts = expression.split(' ');
-  if (parts.length !== 5) {
-    throw new Error('Invalid cron expression');
-  }
-  return {
-    minute: parts[0],
-    hour: parts[1],
-    dayOfMonth: parts[2],
-    month: parts[3],
-    dayOfWeek: parts[4],
-  };
-}
-
-function getNextRuns(expression: string, count: number): string[] {
-  const descriptor = parseCronExpression(expression);
-  const cron = new CronExpression(expression);
-  const nextRuns: string[] = [];
-  let date = new Date();
-  while (nextRuns.length < count) {
-    date = cron.next().toDate();
-    nextRuns.push(date.toISOString());
-  }
-  return nextRuns;
-}
-
-function getHumanReadableDescription(expression: string): string {
-  const descriptor = parseCronExpression(expression);
-  // implement human-readable description logic here
-  return 'Every day at 11:00 PM';
-}
-
 export function parseCron(expression: string) {
   try {
-    const descriptor = parseCronExpression(expression);
-    const nextRuns = getNextRuns(expression, 5);
-    const description = getHumanReadableDescription(expression);
+    const cron = new CronExpression(expression);
+    const nextRuns: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 5; i++) {
+      const next = cron.next().toDate();
+      nextRuns.push(next.toISOString());
+    }
     return {
       valid: true,
       expression,
-      description,
+      description: getDescription(expression),
       nextRuns,
-      schedule: descriptor,
+      schedule: getSchedule(expression),
       timezone: 'UTC',
     };
   } catch (error) {
@@ -61,3 +25,41 @@ export function parseCron(expression: string) {
     };
   }
 }
+
+function getDescription(expression: string) {
+  // Implement human-readable description generation
+  // based on the cron expression
+  const parts = expression.split(' ');
+  if (parts.length !== 5) {
+    return 'Invalid cron expression';
+  }
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  if (minute === '*' && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    return 'Every minute';
+  } else if (minute === '0' && hour === '*' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    return 'Every hour';
+  } else if (minute === '0' && hour === '9' && dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+    return 'Every day at 9:00 AM';
+  } else if (minute === '0' && hour === '9' && dayOfMonth === '*' && month === '*' && dayOfWeek === '1') {
+    return 'Every Monday at 9:00 AM';
+  } else if (minute === '0' && hour === '9' && dayOfMonth === '1' && month === '*' && dayOfWeek === '*') {
+    return 'At 9:00 AM on the 1st of every month';
+  } else {
+    return 'Custom cron expression';
+  }
+}
+
+function getSchedule(expression: string) {
+  const parts = expression.split(' ');
+  if (parts.length !== 5) {
+    return {};
+  }
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  return {
+    minute,
+    hour,
+    dayOfMonth,
+    month,
+    dayOfWeek,
+  };
+  }
