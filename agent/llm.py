@@ -3,22 +3,20 @@
 import json
 import os
 import time
-import google.generativeai as genai
+
+from google import genai
+from google.genai import types
 
 MODEL = "gemini-2.0-flash"
 TEMPERATURE = 0.2
 MAX_RETRIES = 3
 
 
-def _client() -> genai.GenerativeModel:
+def _client() -> genai.Client:
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise EnvironmentError("GEMINI_API_KEY environment variable is not set.")
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(
-        model_name=MODEL,
-        generation_config=genai.GenerationConfig(temperature=TEMPERATURE),
-    )
+    return genai.Client(api_key=api_key)
 
 
 def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> str:
@@ -39,13 +37,18 @@ def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> s
             + "\n\nReturn valid JSON only, no markdown fences."
         )
 
-    model = _client()
+    client = _client()
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
+    config = types.GenerateContentConfig(temperature=TEMPERATURE)
 
     last_error: Exception | None = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = model.generate_content(full_prompt)
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=full_prompt,
+                config=config,
+            )
             text = response.text.strip()
 
             if json_mode:
@@ -61,7 +64,6 @@ def call_llm(system_prompt: str, user_prompt: str, json_mode: bool = False) -> s
             return text
 
         except (ValueError, json.JSONDecodeError) as exc:
-            # JSON parse failure — retry once immediately, then backoff
             last_error = exc
             if attempt < MAX_RETRIES - 1:
                 wait = 2 ** attempt
