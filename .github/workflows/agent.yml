@@ -1,9 +1,7 @@
 name: Autonomous Coding Agent
 
 on:
-  schedule:
-    - cron: "0 23 * * *"  # 11pm UTC nightly
-  workflow_dispatch:       # manual trigger for testing
+  workflow_dispatch:  # manual trigger only
 
 permissions:
   contents: write
