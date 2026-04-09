@@ -1,86 +1,378 @@
-# Task: Build a Cron Expression Parser API
+### GET /api/vat-rates
+Returns all 27 EU countries with their rates.
 
-## Endpoint
-POST /api/parse-cron
-
-## Request
-{ "expression": "0 23 * * *" }
-
-## Success Response
+Response:
 {
-  "valid": true,
-  "expression": "0 23 * * *",
-  "description": "Every day at 11:00 PM",
-  "next_runs": [
-    "2026-04-09T23:00:00.000Z",
-    "2026-04-10T23:00:00.000Z",
-    "2026-04-11T23:00:00.000Z",
-    "2026-04-12T23:00:00.000Z",
-    "2026-04-13T23:00:00.000Z"
-  ],
-  "schedule": {
-    "minute": "0",
-    "hour": "23",
-    "day_of_month": "*",
-    "month": "*",
-    "day_of_week": "*"
-  },
-  "timezone": "UTC"
+  "success": true,
+  "count": 27,
+  "data": { ...all countries keyed by ISO 2-letter code... }
 }
 
-## Error Response
-{ "valid": false, "expression": "99 25 * * *", "error": "Hour value 25 is out of range (0-23)" }
+### GET /api/vat-rates?country=DE
+Returns a single country by ISO 2-letter code (case-insensitive).
 
-## Implementation Rules
-- No external npm packages — implement the parser from scratch using plain JS
-- Calculate next_runs using plain JavaScript Date objects, no date libraries
-- Always return exactly 5 next run times
-- Support standard 5-field cron format only: minute hour day-of-month month day-of-week
-- Support these field formats: wildcard (*), single value (5), range (1-5), step (*/5 or 1-5/2), list (1,2,3)
+Response:
+{
+  "success": true,
+  "country": "DE",
+  "name": "Germany",
+  "rates": {
+    "standard": 19,
+    "reduced_1": null,
+    "reduced_2": 7,
+    "super_reduced": null,
+    "parking": null,
+    "zero": 0
+  },
+  "last_updated": "2026"
+}
 
-## Validation Rules
-- Minute: 0-59
-- Hour: 0-23
-- Day of month: 1-31
-- Month: 1-12
-- Day of week: 0-6 (0 = Sunday)
-- Reject expressions with fewer or more than 5 fields
-- Reject out of range values
-- Reject malformed step or range syntax
+### GET /api/vat-rates?country=DE&include_notes=true
+Same as above but includes the "notes" field if one exists for that country.
 
-## Human Readable Descriptions
-- "* * * * *"   → "Every minute"
-- "0 * * * *"   → "Every hour"
-- "0 9 * * *"   → "Every day at 9:00 AM"
-- "0 9 * * 1"   → "Every Monday at 9:00 AM"
-- "0 9 1 * *"   → "At 9:00 AM on the 1st of every month"
-- "*/15 * * * *" → "Every 15 minutes"
-- "0 9 * * 1-5" → "Every weekday at 9:00 AM"
-- "0 0 1 1 *"   → "At midnight on January 1st"
+### GET /api/vat-rates?country=DE&category=digital_services
+Returns the applicable rate for a given category. Supported categories:
+- standard (default)
+- digital_services → always returns the standard rate (destination principle)
+- food
+- books
+- medicine
+- transport
+- accommodation
 
-## Tests to Write
-Write a Jest test file at __tests__/parse-cron.test.ts covering:
-- Valid standard expressions (* * * * *, 0 9 * * *, 0 9 * * 1)
-- Steps (*/15 * * * *, 0 */2 * * *)
-- Ranges (0 9 * * 1-5)
-- Lists (0 9 * * 1,3,5)
-- next_runs always returns exactly 5 future dates
-- next_runs are all in the future relative to now
-- next_runs are in ascending order
-- Invalid: too few fields ("* * * *")
-- Invalid: too many fields ("* * * * * *")
-- Invalid: out of range minute ("60 * * * *")
-- Invalid: out of range hour ("* 25 * * *")
-- Invalid: out of range day ("* * 32 * *")
-- Invalid: out of range month ("* * * 13 *")
-- Invalid: out of range dow ("* * * * 7")
-- Invalid: bad range syntax ("* * * * 1-")
-- Invalid: bad step syntax ("* * * * */")
-- Invalid: empty string
-- Invalid: non-numeric values ("abc * * * *")
+For categories, apply this logic:
+- digital_services → always standard rate (EU destination principle)
+- food, books, medicine, transport → return reduced_1 if exists, else reduced_2, else standard
+- accommodation → return reduced_2 if exists, else reduced_1, else standard
+- If no reduced rate exists for the category, fall back to standard
 
-## Definition of Done
-- All Jest tests pass
-- No external dependencies added to package.json
-- API returns correct HTTP status codes (200 for valid, 400 for invalid)
-- Code is TypeScript with proper types throughout
+Response:
+{
+  "success": true,
+  "country": "DE",
+  "name": "Germany",
+  "category": "digital_services",
+  "rate": 19,
+  "rate_type": "standard",
+  "note": "Digital services are always taxed at the buyer's country standard rate under EU VAT Directive (destination principle)"
+}
+
+## Error Handling
+- Invalid country code → 404 with { "success": false, "error": "Country code not found", "valid_codes": [...] }
+- Invalid category → 400 with { "success": false, "error": "Invalid category", "valid_categories": [...] }
+- Always return JSON, never throw unhandled errors
+
+## Response Headers
+Add these headers to all API responses:
+- Content-Type: application/json
+- X-Data-Version: 2026
+- X-Last-Updated: 2026-04-09
+- Cache-Control: public, max-age=86400
+
+## Docs Landing Page (app/page.tsx)
+Build a clean, professional API documentation page that shows:
+- Title: EU VAT Rate Lookup API
+- Short description
+- All endpoints with example requests and responses shown in code blocks
+- A table of all 27 countries with their standard rates
+- A note about the digital services destination principle
+- Built with Tailwind, dark theme, monospace font for code blocks
+
+## The Data File
+Place this JSON at data/eu_vat_rates_2026.json:
+
+[PASTE THE JSON DATA BELOW]
+
+## Notes field behaviour
+- Notes are NOT included in API responses by default
+- Only include notes when ?include_notes=true is passed
+- This allows notes to be a premium/pro tier feature later
+
+## Environment
+- No .env needed — fully static data
+- Compatible with Vercel free tier
+- No rate limiting needed for local dev (add via RapidAPI gateway in production)
+
+Data File — data/eu_vat_rates_2026.json
+Paste this into data/eu_vat_rates_2026.json in your project:
+json{
+  "meta": {
+    "version": "2026",
+    "last_updated": "2026-04-09",
+    "source": "European Commission VAT Directive / Fiscalead 2026",
+    "notes": "Rates as of January 2026. Belgium reduced_1 increases from 6% to 12% from March 2026. Ireland reduced_1 of 9% applies to restaurants from July 2026. Always verify against official EC TEDB before production use."
+  },
+  "countries": {
+    "AT": {
+      "name": "Austria",
+      "standard": 20,
+      "reduced_1": 10,
+      "reduced_2": 13,
+      "super_reduced": null,
+      "parking": 13,
+      "zero": 0
+    },
+    "BE": {
+      "name": "Belgium",
+      "standard": 21,
+      "reduced_1": 6,
+      "reduced_2": 12,
+      "super_reduced": null,
+      "parking": 12,
+      "zero": 0,
+      "notes": "reduced_1 increases to 12% from 1 March 2026 for hotels, takeaway meals, leisure and entertainment"
+    },
+    "BG": {
+      "name": "Bulgaria",
+      "standard": 20,
+      "reduced_1": null,
+      "reduced_2": 9,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "CY": {
+      "name": "Cyprus",
+      "standard": 19,
+      "reduced_1": 5,
+      "reduced_2": 9,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "CZ": {
+      "name": "Czech Republic",
+      "standard": 21,
+      "reduced_1": 12,
+      "reduced_2": 0,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "0% rate on prescription medicines from 2026. Single 12% rate for restaurants and non-alcoholic beverages."
+    },
+    "DE": {
+      "name": "Germany",
+      "standard": 19,
+      "reduced_1": null,
+      "reduced_2": 7,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Reduced 7% rate reintroduced for restaurant and catering services from 1 January 2026"
+    },
+    "DK": {
+      "name": "Denmark",
+      "standard": 25,
+      "reduced_1": null,
+      "reduced_2": null,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Denmark applies only a single standard rate with no reduced rates"
+    },
+    "EE": {
+      "name": "Estonia",
+      "standard": 24,
+      "reduced_1": null,
+      "reduced_2": 9,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Standard rate increased from 22% to 24% in July 2025"
+    },
+    "GR": {
+      "name": "Greece",
+      "standard": 24,
+      "reduced_1": 6,
+      "reduced_2": 13,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "ES": {
+      "name": "Spain",
+      "standard": 21,
+      "reduced_1": null,
+      "reduced_2": 10,
+      "super_reduced": 4,
+      "parking": null,
+      "zero": 0
+    },
+    "FI": {
+      "name": "Finland",
+      "standard": 25.5,
+      "reduced_1": 10,
+      "reduced_2": 13.5,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Reduced rate lowered from 14% to 13.5% in 2026"
+    },
+    "FR": {
+      "name": "France",
+      "standard": 20,
+      "reduced_1": 5.5,
+      "reduced_2": 10,
+      "super_reduced": 2.1,
+      "parking": null,
+      "zero": 0,
+      "notes": "Super-reduced 2.1% applies to certain medicines and press publications"
+    },
+    "HR": {
+      "name": "Croatia",
+      "standard": 25,
+      "reduced_1": 5,
+      "reduced_2": 13,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "HU": {
+      "name": "Hungary",
+      "standard": 27,
+      "reduced_1": 5,
+      "reduced_2": 18,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Highest standard VAT rate in the EU"
+    },
+    "IE": {
+      "name": "Ireland",
+      "standard": 23,
+      "reduced_1": 9,
+      "reduced_2": 13.5,
+      "super_reduced": 4.8,
+      "parking": 13.5,
+      "zero": 0,
+      "notes": "9% rate applies to restaurants from 1 July 2026. Super-reduced 4.8% applies to agriculture."
+    },
+    "IT": {
+      "name": "Italy",
+      "standard": 22,
+      "reduced_1": 5,
+      "reduced_2": 10,
+      "super_reduced": 4,
+      "parking": null,
+      "zero": 0
+    },
+    "LT": {
+      "name": "Lithuania",
+      "standard": 21,
+      "reduced_1": 5,
+      "reduced_2": 9,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "From 1 Jan 2026: accommodation, transport, cultural events move from 9% to 12%. Books reduced from 9% to 5%."
+    },
+    "LU": {
+      "name": "Luxembourg",
+      "standard": 16,
+      "reduced_1": 8,
+      "reduced_2": null,
+      "super_reduced": 3,
+      "parking": 14,
+      "zero": 0,
+      "notes": "Lowest standard VAT rate in the EU"
+    },
+    "LV": {
+      "name": "Latvia",
+      "standard": 21,
+      "reduced_1": 5,
+      "reduced_2": 12,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "MT": {
+      "name": "Malta",
+      "standard": 18,
+      "reduced_1": 5,
+      "reduced_2": 7,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "NL": {
+      "name": "Netherlands",
+      "standard": 21,
+      "reduced_1": 9,
+      "reduced_2": null,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Accommodation services moved from 9% to 21% standard rate from 1 January 2026"
+    },
+    "PL": {
+      "name": "Poland",
+      "standard": 23,
+      "reduced_1": 5,
+      "reduced_2": 8,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "PT": {
+      "name": "Portugal",
+      "standard": 23,
+      "reduced_1": 6,
+      "reduced_2": 13,
+      "super_reduced": null,
+      "parking": 13,
+      "zero": 0
+    },
+    "RO": {
+      "name": "Romania",
+      "standard": 21,
+      "reduced_1": 11,
+      "reduced_2": null,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Standard rate increased from 19% to 21% in August 2025. 5% and 9% brackets consolidated into single 11% reduced rate."
+    },
+    "SE": {
+      "name": "Sweden",
+      "standard": 25,
+      "reduced_1": 6,
+      "reduced_2": 12,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "SI": {
+      "name": "Slovenia",
+      "standard": 22,
+      "reduced_1": 5,
+      "reduced_2": 9.5,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0
+    },
+    "SK": {
+      "name": "Slovakia",
+      "standard": 23,
+      "reduced_1": 5,
+      "reduced_2": 19,
+      "super_reduced": null,
+      "parking": null,
+      "zero": 0,
+      "notes": "Standard rate increased from 20% to 23% from 2026. Products high in sugar/salt taxed at 23% (exceptions: baby food, pure juices, certain dairy)."
+    }
+  },
+  "digital_services": {
+    "note": "Since 2015 EU VAT Directive, digital services are taxed at the BUYER's country rate (destination principle). The standard rate of each country applies unless a specific reduced rate exists for electronic services.",
+    "applies_standard_rate": true,
+    "oss_threshold_eur": 10000
+  },
+  "eu_rules": {
+    "minimum_standard_rate": 15,
+    "maximum_standard_rate": null,
+    "minimum_reduced_rate": 5,
+    "max_reduced_rates_per_country": 2,
+    "super_reduced_allowed": true,
+    "zero_rate_allowed": true,
+    "directive": "Council Directive 2006/112/EC amended by EU Directive 2022/542"
+  }
+}
