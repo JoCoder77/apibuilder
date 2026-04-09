@@ -1,86 +1,66 @@
-# Task: Build a Cron Expression Parser API
+# EU VAT Rate Lookup API
 
-## Endpoint
-POST /api/parse-cron
+## Stack
+Next.js 14 (app router), TypeScript, Tailwind, Vercel. No DB, no external APIs.
 
-## Request
-{ "expression": "0 23 * * *" }
+## Files
+```
+app/api/vat-rates/route.ts       → main endpoint
+lib/vat-data.ts                  → imports data/eu_vat_rates_2026.json
+data/eu_vat_rates_2026.json      → provided separately, do not modify
+app/page.tsx                     → docs landing page
+```
 
-## Success Response
-{
-  "valid": true,
-  "expression": "0 23 * * *",
-  "description": "Every day at 11:00 PM",
-  "next_runs": [
-    "2026-04-09T23:00:00.000Z",
-    "2026-04-10T23:00:00.000Z",
-    "2026-04-11T23:00:00.000Z",
-    "2026-04-12T23:00:00.000Z",
-    "2026-04-13T23:00:00.000Z"
-  ],
-  "schedule": {
-    "minute": "0",
-    "hour": "23",
-    "day_of_month": "*",
-    "month": "*",
-    "day_of_week": "*"
-  },
-  "timezone": "UTC"
-}
+## Endpoints
 
-## Error Response
-{ "valid": false, "expression": "99 25 * * *", "error": "Hour value 25 is out of range (0-23)" }
+**GET /api/vat-rates**
+Returns all 27 countries keyed by ISO code.
 
-## Implementation Rules
-- No external npm packages — implement the parser from scratch using plain JS
-- Calculate next_runs using plain JavaScript Date objects, no date libraries
-- Always return exactly 5 next run times
-- Support standard 5-field cron format only: minute hour day-of-month month day-of-week
-- Support these field formats: wildcard (*), single value (5), range (1-5), step (*/5 or 1-5/2), list (1,2,3)
+**GET /api/vat-rates?country=DE**
+Returns single country rates. Strip `notes` field unless `?include_notes=true`.
 
-## Validation Rules
-- Minute: 0-59
-- Hour: 0-23
-- Day of month: 1-31
-- Month: 1-12
-- Day of week: 0-6 (0 = Sunday)
-- Reject expressions with fewer or more than 5 fields
-- Reject out of range values
-- Reject malformed step or range syntax
+**GET /api/vat-rates?country=DE&category=digital_services**
+Returns applicable rate for category. Categories: `standard`, `digital_services`, `food`, `books`, `medicine`, `transport`, `accommodation`.
 
-## Human Readable Descriptions
-- "* * * * *"   → "Every minute"
-- "0 * * * *"   → "Every hour"
-- "0 9 * * *"   → "Every day at 9:00 AM"
-- "0 9 * * 1"   → "Every Monday at 9:00 AM"
-- "0 9 1 * *"   → "At 9:00 AM on the 1st of every month"
-- "*/15 * * * *" → "Every 15 minutes"
-- "0 9 * * 1-5" → "Every weekday at 9:00 AM"
-- "0 0 1 1 *"   → "At midnight on January 1st"
+Category logic:
+- `digital_services` → always `standard` rate
+- `food, books, medicine, transport` → `reduced_1` ?? `reduced_2` ?? `standard`
+- `accommodation` → `reduced_2` ?? `reduced_1` ?? `standard`
 
-## Tests to Write
-Write a Jest test file at __tests__/parse-cron.test.ts covering:
-- Valid standard expressions (* * * * *, 0 9 * * *, 0 9 * * 1)
-- Steps (*/15 * * * *, 0 */2 * * *)
-- Ranges (0 9 * * 1-5)
-- Lists (0 9 * * 1,3,5)
-- next_runs always returns exactly 5 future dates
-- next_runs are all in the future relative to now
-- next_runs are in ascending order
-- Invalid: too few fields ("* * * *")
-- Invalid: too many fields ("* * * * * *")
-- Invalid: out of range minute ("60 * * * *")
-- Invalid: out of range hour ("* 25 * * *")
-- Invalid: out of range day ("* * 32 * *")
-- Invalid: out of range month ("* * * 13 *")
-- Invalid: out of range dow ("* * * * 7")
-- Invalid: bad range syntax ("* * * * 1-")
-- Invalid: bad step syntax ("* * * * */")
-- Invalid: empty string
-- Invalid: non-numeric values ("abc * * * *")
+## Response Shape
 
-## Definition of Done
-- All Jest tests pass
-- No external dependencies added to package.json
-- API returns correct HTTP status codes (200 for valid, 400 for invalid)
-- Code is TypeScript with proper types throughout
+Country lookup:
+```json
+{ "success": true, "country": "DE", "name": "Germany", "rates": { "standard": 19, "reduced_1": null, "reduced_2": 7, "super_reduced": null, "parking": null, "zero": 0 }, "last_updated": "2026" }
+```
+
+Category lookup:
+```json
+{ "success": true, "country": "DE", "category": "digital_services", "rate": 19, "rate_type": "standard" }
+```
+
+Errors: 404 for bad country, 400 for bad category. Always return JSON.
+
+## Headers (all responses)
+```
+Content-Type: application/json
+X-Data-Version: 2026
+Cache-Control: public, max-age=86400
+```
+
+## Docs Page
+Dark theme, monospace code blocks, Tailwind. Show: all endpoints with example responses, table of all 27 countries + standard rates, note on digital services destination principle.
+
+## Notes
+- Omit `notes` field by default, expose via `?include_notes=true`
+- No .env needed
+- No rate limiting (handled by RapidAPI gateway in prod)
+
+## Data File
+The file `data/eu_vat_rates_2026.json` is already present in the repo. Read it carefully before generating code — it is the source of truth for all VAT rates. The structure is:
+- `meta` — version, last_updated, source, notes
+- `countries` — object keyed by ISO 2-letter code (AT, BE, BG…), each with: name, standard, reduced_1, reduced_2, super_reduced, parking, zero, and optional notes
+- `digital_services` — EU-wide rules for digital services
+- `eu_rules` — directive info and rate constraints
+
+Do not modify this file. Import it directly in `lib/vat-data.ts`.
